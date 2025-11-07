@@ -1,0 +1,4 @@
+export const CREDIT_COST_CREATE_PROJECT = 15;
+export const CREDIT_COST_CREATE_TASK = 5;
+export const CREDIT_COST_RUN_TASK = 5;
+export const CREDIT_COST_SECURITY_CHECK = 2;

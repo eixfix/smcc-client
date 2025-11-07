@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-background font-sans text-slate-200 antialiased;
+  background-image:
+    radial-gradient(1200px circle at 20% 20%, rgba(14, 165, 233, 0.18), transparent 60%),
+    radial-gradient(1000px circle at 80% 10%, rgba(56, 189, 248, 0.12), transparent 55%),
+    radial-gradient(900px circle at 50% 120%, rgba(15, 118, 110, 0.18), transparent 60%);
+  background-attachment: fixed;
+}
+
+a,
+a:visited {
+  @apply text-accent-soft transition-colors hover:text-accent-strong;
+}
+
+::selection {
+  background: #0ea5e9;
+  color: #0f172a;
+}
+
+@layer base {
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply text-slate-100;
+  }
+}
+
+@layer components {
+  .shadow-card {
+    @apply shadow-[0_20px_45px_-30px_rgba(148,163,184,0.45)];
+  }
+}
