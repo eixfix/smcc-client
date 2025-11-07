@@ -1,10 +1,7 @@
 {
-  "/api/organizations/[organizationId]/projects/route": "app/api/organizations/[organizationId]/projects/route.js",
-  "/api/projects/[projectId]/tasks/route": "app/api/projects/[projectId]/tasks/route.js",
-  "/api/projects/[projectId]/tasks/[taskId]/reports/route": "app/api/projects/[projectId]/tasks/[taskId]/reports/route.js",
-  "/(dashboard)/tasks/page": "app/(dashboard)/tasks/page.js",
   "/(dashboard)/projects/page": "app/(dashboard)/projects/page.js",
   "/(dashboard)/reports/page": "app/(dashboard)/reports/page.js",
+  "/(dashboard)/page": "app/(dashboard)/page.js",
   "/(dashboard)/user-guide/page": "app/(dashboard)/user-guide/page.js",
-  "/(dashboard)/page": "app/(dashboard)/page.js"
+  "/(dashboard)/tasks/page": "app/(dashboard)/tasks/page.js"
 }
