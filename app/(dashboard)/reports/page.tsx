@@ -10,6 +10,31 @@ const statusVariantMap: Record<string, 'success' | 'warning' | 'danger' | 'defau
   failed: 'danger'
 };
 
+type ReportSummary = {
+  scenario?: {
+    mode?: string;
+    totalRequests?: number;
+  };
+  metrics?: {
+    averageMs?: number;
+    minMs?: number;
+    maxMs?: number;
+    p95Ms?: number;
+    successRate?: number;
+  };
+  results?: {
+    totalRequests?: number;
+    successCount?: number;
+    failureCount?: number;
+  };
+  request?: {
+    method?: string;
+    headers?: Record<string, string>;
+    hasPayload?: boolean;
+  };
+  raw?: Record<string, unknown>;
+};
+
 function formatMode(mode?: string): string {
   if (!mode) {
     return '—';
@@ -147,10 +172,11 @@ export default async function ReportsPage() {
           ) : (
             reports.map((report) => {
               const organization = report.task.project.organization;
-              const mode = report.summaryJson?.scenario?.mode ?? report.task.label;
-              const metrics = report.summaryJson?.metrics;
-              const results = report.summaryJson?.results;
-              const requestInfo = report.summaryJson?.request;
+              const summary = (report.summaryJson as ReportSummary | undefined) ?? {};
+              const mode = summary.scenario?.mode ?? report.task.label;
+              const metrics = summary.metrics;
+              const results = summary.results;
+              const requestInfo = summary.request;
               const method = (requestInfo?.method ?? report.task.method ?? 'GET').toUpperCase();
               const headerCount =
                 requestInfo?.headers && typeof requestInfo.headers === 'object'

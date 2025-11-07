@@ -269,11 +269,12 @@ export function ProjectsOverview({
                 <Badge variant="default" className="bg-surface-muted/70 text-slate-300">
                   {organizations.find((org) => org.id === selectedOrganizationId)?.name ?? '—'}
                 </Badge>
-                <Button asChild variant="secondary">
-                  <Link href={`/tasks?projectId=${project.id}&organizationId=${selectedOrganizationId ?? ''}`}>
-                    Manage tasks
-                  </Link>
-                </Button>
+                <Link
+                  href={`/tasks?projectId=${project.id}&organizationId=${selectedOrganizationId ?? ''}`}
+                  className="inline-flex items-center justify-center rounded-lg border border-slate-800/70 bg-slate-900/70 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-900"
+                >
+                  Manage tasks
+                </Link>
               </CardContent>
             </Card>
           ))}
