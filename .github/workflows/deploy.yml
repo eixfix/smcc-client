@@ -19,8 +19,13 @@ jobs:
     # Put public build-time vars here or in Environment Variables
     env:
       # Example:
-      # NEXT_PUBLIC_API_BASE: https://smcc-api.trickylabs.id
+      NEXT_PUBLIC_API_BASE: https://smcc-api.trickylabs.id
       NODE_OPTIONS: --max_old_space_size=2048
+      NEXT_PUBLIC_BASE_URL: https://smcc.trickylabs.id
+      # If you use NextAuth or similar:
+      NEXTAUTH_URL: https://smcc.trickylabs.id
+      # Optional internal URL for callbacks (some libs support this):
+      NEXTAUTH_URL_INTERNAL: http://127.0.0.1:3071
 
     steps:
       - name: Checkout
