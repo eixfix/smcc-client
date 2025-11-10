@@ -18,6 +18,8 @@ interface ServersOverviewProps {
 }
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'https://api.loadtest.dev';
+const AGENT_INSTALL_SCRIPT_URL =
+  process.env.NEXT_PUBLIC_AGENT_INSTALL_URL ?? `${API_BASE_URL.replace(/\/$/, '')}/agents/install.sh`;
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
@@ -281,7 +283,7 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
           <ol className="space-y-3 pl-4">
             <li className="list-decimal">
               Install the helper bundle:
-              <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-950/80 p-3 text-xs text-accent-soft">{`curl -fsSL https://cdn.loadtest.dev/agents/install.sh | sudo bash`}</pre>
+              <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-950/80 p-3 text-xs text-accent-soft">{`curl -fsSL ${AGENT_INSTALL_SCRIPT_URL} | sudo bash`}</pre>
             </li>
             <li className="list-decimal">
               Update <code>/etc/loadtest-agent/config.yaml</code> with the access key and secret you just minted:

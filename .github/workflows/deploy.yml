@@ -10,22 +10,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
+  build-client:
     runs-on: ubuntu-latest
-    environment: staging
     permissions:
       contents: read
 
     # Put public build-time vars here or in Environment Variables
     env:
-      # Example:
       NEXT_PUBLIC_API_BASE_URL: https://smcc-api.trickylabs.id
       NODE_OPTIONS: --max_old_space_size=2048
       NEXT_PUBLIC_BASE_URL: https://smcc.trickylabs.id
-      # If you use NextAuth or similar, set the URL here:
       NEXTAUTH_URL: https://smcc.trickylabs.id
-      # Optional internal URL for callbacks (some libs support this):
       AUTH_URL: https://smcc.trickylabs.id
+      NEXT_PUBLIC_AGENT_INSTALL_URL: "https://smcc-api.trickylabs.id/agents/install.sh"
       AUTH_TRUST_HOST: true
 
     steps:
@@ -51,7 +48,28 @@ jobs:
         run: |
           mkdir -p release
           cp -r .next public package.json package-lock.json node_modules next.config.* release/ 2>/dev/null || true
-          tar -C release -czf client-${{ github.sha }}.tgz .
+          tar -C release -czf /tmp/client-${{ github.sha }}.tgz .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-${{ github.sha }}
+          path: /tmp/client-${{ github.sha }}.tgz
+          retention-days: 1
+
+  deploy-client:
+    runs-on: ubuntu-latest
+    needs: build-client
+    environment: staging
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: client-${{ github.sha }}
+          path: /tmp
 
       - name: Prepare SSH
         run: |
@@ -65,7 +83,7 @@ jobs:
 
       - name: Upload & finalize on server
         run: |
-          scp client-${{ github.sha }}.tgz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
+          scp /tmp/client-${{ github.sha }}.tgz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
             "/opt/smcc/finalize_release.sh client ${{ github.sha }} /tmp/client-${{ github.sha }}.tgz .env"
 
