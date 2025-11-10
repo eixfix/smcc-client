@@ -25,7 +25,8 @@ jobs:
       # If you use NextAuth or similar, set the URL here:
       NEXTAUTH_URL: https://smcc.trickylabs.id
       # Optional internal URL for callbacks (some libs support this):
-      NEXTAUTH_URL_INTERNAL: http://127.0.0.1:3071
+      AUTH_URL: https://smcc.trickylabs.id
+      AUTH_TRUST_HOST: true
 
     steps:
       - name: Checkout
