@@ -18,8 +18,6 @@ interface ServersOverviewProps {
 }
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'https://api.loadtest.dev';
-const AGENT_INSTALL_SCRIPT_URL =
-  process.env.NEXT_PUBLIC_AGENT_INSTALL_URL ?? `${API_BASE_URL.replace(/\/$/, '')}/agents/install.sh`;
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
@@ -47,8 +45,15 @@ type AgentCredentials = {
 };
 
 type CredentialsMap = Record<string, AgentCredentials | undefined>;
+type InstallCommand = {
+  command: string;
+  expiresInMinutes: number;
+  fetchedAt: number;
+};
+type InstallCommandMap = Record<string, InstallCommand | undefined>;
 
 type ErrorMap = Record<string, string | undefined>;
+type InstallErrorMap = Record<string, string | undefined>;
 
 type ServerFormState = {
   organizationId: string;
@@ -71,6 +76,9 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
   const [credentials, setCredentials] = useState<CredentialsMap>({});
   const [errors, setErrors] = useState<ErrorMap>({});
   const [pendingServerId, setPendingServerId] = useState<string | null>(null);
+  const [installCommands, setInstallCommands] = useState<InstallCommandMap>({});
+  const [installErrors, setInstallErrors] = useState<InstallErrorMap>({});
+  const [installPendingServerId, setInstallPendingServerId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isCreateOpen, setCreateOpen] = useState(false);
   const [isCreatingServer, setCreatingServer] = useState(false);
@@ -131,6 +139,53 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
         setPendingServerId(null);
       }
     });
+  };
+
+  const handleGenerateInstallCommand = (serverId: string) => {
+    setInstallPendingServerId(serverId);
+    setInstallErrors((prev) => ({ ...prev, [serverId]: undefined }));
+
+    void (async () => {
+      try {
+        const response = await fetch(`/api/servers/${serverId}/install-link`, {
+          method: 'POST'
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(payload.error ?? 'Failed to generate install command.');
+        }
+
+        const data = (await response.json()) as {
+          command?: string;
+          expiresInMinutes?: number;
+        };
+
+        if (!data.command || !data.expiresInMinutes) {
+          throw new Error('Install command response was incomplete.');
+        }
+
+        setInstallCommands((prev) => ({
+          ...prev,
+          [serverId]: {
+            command: data.command,
+            expiresInMinutes: data.expiresInMinutes,
+            fetchedAt: Date.now()
+          }
+        }));
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'An unexpected error occurred while generating the install command.';
+        setInstallErrors((prev) => ({
+          ...prev,
+          [serverId]: message
+        }));
+      } finally {
+        setInstallPendingServerId(null);
+      }
+    })();
   };
 
   const resetForm = () => {
@@ -298,23 +353,18 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
         <CardHeader>
           <CardTitle className="text-slate-100">Agent installation guide</CardTitle>
           <CardDescription className="text-slate-400">
-            Deploy the server agent after minting credentials. These instructions target Ubuntu/Debian hosts with sudo access.
+            Generate a short-lived install command from the desired server card below. These steps target Ubuntu/Debian hosts with sudo access.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 text-sm text-slate-300">
           <ol className="space-y-3 pl-4">
             <li className="list-decimal">
-              Install the helper bundle:
-              <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-950/80 p-3 text-xs text-accent-soft">{`curl -fsSL ${AGENT_INSTALL_SCRIPT_URL} | sudo bash`}</pre>
+              Generate the install command from the server card and run it from the registered IP address. Commands expire after 1 hour by default.
             </li>
             <li className="list-decimal">
-              Update <code>/etc/loadtest-agent/config.yaml</code> with the access key and secret you just minted:
-              <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-950/80 p-3 text-xs text-slate-200">{`server_id: <server-id>
-agent_access_key: <access-key>
-agent_secret: <secret>
-api_url: ${API_BASE_URL}
-poll_interval_seconds: 30
-telemetry_interval_minutes: 60`}</pre>
+              Encrypt the agent config with your credentials (recommended):
+              <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-900/80 p-3 text-xs text-accent-soft">{`sudo loadtest-agent config --server-id <server-id> --access-key <access-key> --secret <secret> --api-url ${API_BASE_URL}`}</pre>
+              This command rewrites the encrypted JSON config at <code>/etc/loadtest-agent/config.yaml</code>. If you prefer to edit manually, provide the same fields (server id, access key, secret, API URL) in that file before restarting the service.
             </li>
             <li className="list-decimal">
               Restart the service and confirm it is running:
@@ -322,7 +372,7 @@ telemetry_interval_minutes: 60`}</pre>
             </li>
           </ol>
           <p className="text-xs text-slate-500">
-            Need more detail? Check <code>docs/server-agent-plan.md</code> for architecture notes and troubleshooting.
+            <code>AGENT_INSTALL_DIR</code> defines where the API writes the agent bundle (default <code>$HOME/loadtest-agent</code>). Override it in the API environment if your hosts need a different path. Need more detail? Check <code>docs/server-agent-plan.md</code> for architecture notes and troubleshooting.
           </p>
         </CardContent>
       </Card>
@@ -372,7 +422,10 @@ telemetry_interval_minutes: 60`}</pre>
             const statusIntent = server.isSuspended || isOrgSuspended ? 'warning' : 'success';
             const serverCredentials = credentials[server.id];
             const errorMessage = errors[server.id];
+            const installCommand = installCommands[server.id];
+            const installError = installErrors[server.id];
             const isServerPending = isPending && pendingServerId === server.id;
+            const isInstallPending = installPendingServerId === server.id;
 
             return (
               <Card
@@ -409,12 +462,25 @@ telemetry_interval_minutes: 60`}</pre>
                   >
                     {isServerPending ? 'Creating agent…' : 'Create Agent Token'}
                   </Button>
+                  <Button
+                    variant="secondary"
+                    className="w-full md:w-auto"
+                    onClick={() => handleGenerateInstallCommand(server.id)}
+                    disabled={isInstallPending}
+                  >
+                    {isInstallPending ? 'Preparing command…' : 'Generate Install Command'}
+                  </Button>
                   <p className="text-xs text-slate-500">
                     This action revokes previous agent credentials and displays the new secret once.
                   </p>
                   {errorMessage ? (
                     <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
                       {errorMessage}
+                    </p>
+                  ) : null}
+                  {installError ? (
+                    <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                      {installError}
                     </p>
                   ) : null}
                   {serverCredentials ? (
@@ -436,6 +502,19 @@ telemetry_interval_minutes: 60`}</pre>
                           </pre>
                         </div>
                       </div>
+                    </div>
+                  ) : null}
+                  {installCommand ? (
+                    <div className="space-y-2 rounded-xl border border-slate-700/70 bg-slate-950/60 p-3 text-xs">
+                      <p className="font-semibold text-slate-200">
+                        Install command · valid for approximately {installCommand.expiresInMinutes} minutes
+                      </p>
+                      <pre className="overflow-x-auto rounded-lg bg-slate-900/80 p-3 text-accent-soft">
+                        {installCommand.command}
+                      </pre>
+                      <p className="text-xs text-slate-500">
+                        Run this command from the registered server IP. The script refuses requests from other addresses.
+                      </p>
                     </div>
                   ) : null}
                   {server.description ? (
