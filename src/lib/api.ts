@@ -68,6 +68,7 @@ export type ServerSummary = {
   id: string;
   name: string;
   hostname: string | null;
+  allowedIp: string | null;
   description: string | null;
   isSuspended: boolean;
   createdAt: string;
@@ -298,6 +299,7 @@ export async function fetchServers(
       id: string;
       name: string;
       hostname?: string | null;
+      allowedIp?: string | null;
       description?: string | null;
       isSuspended: boolean;
       createdAt: string;
@@ -316,6 +318,7 @@ export async function fetchServers(
       id: server.id,
       name: server.name,
       hostname: server.hostname ?? null,
+      allowedIp: server.allowedIp ?? null,
       description: server.description ?? null,
       isSuspended: server.isSuspended,
       createdAt: server.createdAt,

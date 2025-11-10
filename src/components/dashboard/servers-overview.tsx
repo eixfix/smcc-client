@@ -54,6 +54,7 @@ type ServerFormState = {
   organizationId: string;
   name: string;
   hostname: string;
+  allowedIp: string;
   description: string;
 };
 
@@ -61,6 +62,7 @@ const INITIAL_FORM_STATE: ServerFormState = {
   organizationId: '',
   name: '',
   hostname: '',
+  allowedIp: '',
   description: ''
 };
 
@@ -151,6 +153,11 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
       return;
     }
 
+    if (!formState.allowedIp.trim()) {
+      setCreateError('Server IP address is required.');
+      return;
+    }
+
     setCreatingServer(true);
     setCreateError(null);
 
@@ -164,6 +171,7 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
           organizationId: formState.organizationId,
           name: formState.name.trim(),
           hostname: formState.hostname.trim() || undefined,
+          allowedIp: formState.allowedIp.trim(),
           description: formState.description.trim() || undefined
         })
       });
@@ -243,6 +251,20 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
                 onChange={handleFormFieldChange('hostname')}
               />
             </div>
+            <div className="space-y-2 md:col-span-1">
+              <Label htmlFor="server-ip">Allowed server IP</Label>
+              <Input
+                id="server-ip"
+                name="allowedIp"
+                placeholder="203.0.113.42"
+                value={formState.allowedIp}
+                onChange={handleFormFieldChange('allowedIp')}
+                required
+              />
+              <p className="text-xs text-slate-500">
+                Only requests originating from this IP will be accepted by the agent endpoints.
+              </p>
+            </div>
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="server-description">Description (optional)</Label>
               <textarea
@@ -292,7 +314,7 @@ agent_access_key: <access-key>
 agent_secret: <secret>
 api_url: ${API_BASE_URL}
 poll_interval_seconds: 30
-telemetry_interval_minutes: 5`}</pre>
+telemetry_interval_minutes: 60`}</pre>
             </li>
             <li className="list-decimal">
               Restart the service and confirm it is running:
@@ -376,6 +398,9 @@ telemetry_interval_minutes: 5`}</pre>
                   </Badge>
                 </CardHeader>
                 <CardContent className="space-y-4 text-sm text-slate-300">
+                  <p className="text-xs text-slate-500">
+                    Allowed IP: <span className="font-mono text-slate-200">{server.allowedIp ?? 'Not set'}</span>
+                  </p>
                   <Button
                     variant="primary"
                     className="w-full md:w-auto"

@@ -16,6 +16,7 @@ export async function POST(request: Request) {
     organizationId?: string;
     name?: string;
     hostname?: string;
+    allowedIp?: string;
     description?: string;
   };
 
