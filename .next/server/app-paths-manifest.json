@@ -1,8 +1,5 @@
 {
-  "/api/session/route": "app/api/session/route.js",
-  "/api/organizations/[organizationId]/projects/route": "app/api/organizations/[organizationId]/projects/route.js",
-  "/api/projects/[projectId]/tasks/route": "app/api/projects/[projectId]/tasks/route.js",
-  "/(dashboard)/page": "app/(dashboard)/page.js",
   "/(auth)/login/page": "app/(auth)/login/page.js",
+  "/(dashboard)/page": "app/(dashboard)/page.js",
   "/(dashboard)/tasks/page": "app/(dashboard)/tasks/page.js"
 }
