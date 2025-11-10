@@ -81,6 +81,15 @@ export type ServerSummary = {
     lastDebitAt: string | null;
     scanSuspendedAt: string | null;
   };
+  latestTelemetry: ServerTelemetrySnapshot | null;
+};
+
+export type ServerTelemetrySnapshot = {
+  id: string;
+  collectedAt: string;
+  cpuPercent: number | null;
+  memoryPercent: number | null;
+  diskPercent: number | null;
 };
 
 export type TaskReportActivity = {
@@ -312,6 +321,13 @@ export async function fetchServers(
         lastDebitAt?: string | null;
         scanSuspendedAt?: string | null;
       };
+      telemetry?: Array<{
+        id: string;
+        collectedAt: string;
+        cpuPercent: number | null;
+        memoryPercent: number | null;
+        diskPercent: number | null;
+      }>;
     }>;
 
     return data.map((server) => ({
@@ -330,7 +346,16 @@ export async function fetchServers(
         lastCreditedAt: server.organization.lastCreditedAt ?? null,
         lastDebitAt: server.organization.lastDebitAt ?? null,
         scanSuspendedAt: server.organization.scanSuspendedAt ?? null
-      }
+      },
+      latestTelemetry: server.telemetry?.[0]
+        ? {
+            id: server.telemetry[0].id,
+            collectedAt: server.telemetry[0].collectedAt,
+            cpuPercent: server.telemetry[0].cpuPercent ?? null,
+            memoryPercent: server.telemetry[0].memoryPercent ?? null,
+            diskPercent: server.telemetry[0].diskPercent ?? null
+          }
+        : null
     }));
   } catch (error) {
     console.warn('Failed to fetch servers', error);

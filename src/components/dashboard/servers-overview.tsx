@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useMemo, useState, useTransition } from 'react';
+import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -10,14 +10,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/src
 import { Input } from '@/src/components/ui/input';
 import { Label } from '@/src/components/ui/label';
 import { StatCard } from '@/src/components/dashboard/stat-card';
-import type { OrganizationSummary, ServerSummary } from '@/src/lib/api';
+import type {
+  OrganizationSummary,
+  ServerSummary,
+  ServerTelemetrySnapshot
+} from '@/src/lib/api';
 
 interface ServersOverviewProps {
   servers: ServerSummary[];
   organizations: OrganizationSummary[];
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'https://api.loadtest.dev';
+const TELEMETRY_HISTORY_LIMIT = 25;
+
+const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
+  numeric: 'auto'
+});
+
+const telemetryTimestampFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeStyle: 'short'
+});
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
@@ -39,6 +52,69 @@ function formatDate(dateInput: string | null): string {
   return dateFormatter.format(value);
 }
 
+function formatRelativeTime(dateInput: string | null): string {
+  if (!dateInput) {
+    return 'Awaiting update';
+  }
+
+  const value = new Date(dateInput);
+
+  if (Number.isNaN(value.getTime())) {
+    return 'Awaiting update';
+  }
+
+  const diffMs = value.getTime() - Date.now();
+  const absMs = Math.abs(diffMs);
+
+  if (absMs < 60_000) {
+    return relativeTimeFormatter.format(Math.round(diffMs / 1000), 'second');
+  }
+
+  if (absMs < 3_600_000) {
+    return relativeTimeFormatter.format(Math.round(diffMs / 60_000), 'minute');
+  }
+
+  if (absMs < 86_400_000) {
+    return relativeTimeFormatter.format(Math.round(diffMs / 3_600_000), 'hour');
+  }
+
+  return relativeTimeFormatter.format(Math.round(diffMs / 86_400_000), 'day');
+}
+
+function formatPercent(value: number | null): string {
+  if (value === null || Number.isNaN(value)) {
+    return 'N/A';
+  }
+
+  return `${Math.round(value)}%`;
+}
+
+function getTelemetryTone(value: number | null): string {
+  if (value === null || Number.isNaN(value)) {
+    return 'text-slate-400';
+  }
+
+  if (value >= 90) {
+    return 'text-rose-300';
+  }
+
+  if (value >= 75) {
+    return 'text-amber-200';
+  }
+
+  return 'text-emerald-300';
+}
+
+function formatTelemetryTimestamp(dateInput: string): string {
+  const value = new Date(dateInput);
+
+  if (Number.isNaN(value.getTime())) {
+    return 'Unknown';
+  }
+
+  return telemetryTimestampFormatter.format(value);
+}
+
 type AgentCredentials = {
   accessKey: string;
   secret: string;
@@ -54,6 +130,7 @@ type InstallCommandMap = Record<string, InstallCommand | undefined>;
 
 type ErrorMap = Record<string, string | undefined>;
 type InstallErrorMap = Record<string, string | undefined>;
+type TelemetryHistoryMap = Record<string, ServerTelemetrySnapshot[] | undefined>;
 
 type ServerFormState = {
   organizationId: string;
@@ -84,6 +161,30 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
   const [isCreatingServer, setCreatingServer] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [formState, setFormState] = useState<ServerFormState>(INITIAL_FORM_STATE);
+  const [telemetryHistory, setTelemetryHistory] = useState<TelemetryHistoryMap>({});
+  const [activeTelemetryServer, setActiveTelemetryServer] = useState<ServerSummary | null>(null);
+  const [telemetryLoadingServerId, setTelemetryLoadingServerId] = useState<string | null>(null);
+  const [telemetryError, setTelemetryError] = useState<string | null>(null);
+  const closeTelemetryPanel = () => {
+    setActiveTelemetryServer(null);
+    setTelemetryError(null);
+    setTelemetryLoadingServerId(null);
+  };
+
+  useEffect(() => {
+    if (!activeTelemetryServer) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeTelemetryPanel();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTelemetryServer]);
 
   const totalServers = servers.length;
   const suspendedServers = servers.filter((server) => server.isSuspended).length;
@@ -95,6 +196,14 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
       [...organizations].sort((a, b) => a.name.localeCompare(b.name)),
     [organizations]
   );
+
+  const activeTelemetryRecords = activeTelemetryServer
+    ? telemetryHistory[activeTelemetryServer.id]
+    : undefined;
+  const isTelemetryPanelLoading =
+    Boolean(activeTelemetryServer) &&
+    telemetryLoadingServerId === activeTelemetryServer?.id &&
+    !activeTelemetryRecords;
 
   const handleCreateAgent = (serverId: string) => {
     setPendingServerId(serverId);
@@ -187,6 +296,47 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
         }));
       } finally {
         setInstallPendingServerId(null);
+      }
+    })();
+  };
+
+  const handleViewTelemetryHistory = (server: ServerSummary) => {
+    setActiveTelemetryServer(server);
+    setTelemetryError(null);
+
+    if (telemetryHistory[server.id]) {
+      return;
+    }
+
+    setTelemetryLoadingServerId(server.id);
+
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/servers/${server.id}/telemetry?limit=${TELEMETRY_HISTORY_LIMIT}`
+        );
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { error?: string };
+          const defaultMessage =
+            response.status === 403
+              ? 'You need owner permissions to view telemetry for this server.'
+              : 'Failed to load telemetry history.';
+          throw new Error(payload.error ?? defaultMessage);
+        }
+
+        const data = (await response.json()) as ServerTelemetrySnapshot[];
+
+        setTelemetryHistory((prev) => ({
+          ...prev,
+          [server.id]: data
+        }));
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to load telemetry history.';
+        setTelemetryError(message);
+      } finally {
+        setTelemetryLoadingServerId(null);
       }
     })();
   };
@@ -366,7 +516,7 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
             </li>
             <li className="list-decimal">
               Encrypt the agent config with your credentials (recommended):
-              <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-900/80 p-3 text-xs text-accent-soft">{`sudo loadtest-agent config --server-id <server-id> --access-key <access-key> --secret <secret> --api-url ${API_BASE_URL}`}</pre>
+              <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-900/80 p-3 text-xs text-accent-soft">{`sudo smcc-agent config --server-id <server-id> --access-key <access-key> --secret <secret> --api-url https://smcc-api.trickylabs.id`}</pre>
               This command rewrites the encrypted JSON config at <code>/etc/loadtest-agent/config.yaml</code>. Server IDs are shown on each card for easy copy/paste. If you prefer to edit manually, provide the same fields (server id, access key, secret, API URL) in that file before restarting the service.
             </li>
             <li className="list-decimal">
@@ -429,6 +579,7 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
             const installError = installErrors[server.id];
             const isServerPending = isPending && pendingServerId === server.id;
             const isInstallPending = installPendingServerId === server.id;
+            const telemetrySnapshot = server.latestTelemetry;
 
             return (
               <Card
@@ -460,6 +611,49 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
                   <p className="text-xs text-slate-500">
                     Server ID: <span className="font-mono text-slate-200">{server.id}</span>
                   </p>
+                  <div className="rounded-2xl border border-slate-800/70 bg-slate-950/40 p-4">
+                    <div className="flex flex-col gap-1 text-xs uppercase tracking-wide text-slate-500 md:flex-row md:items-center md:justify-between">
+                      <span>Telemetry Snapshot</span>
+                      <span className="text-[11px] lowercase tracking-normal text-slate-400">
+                        {telemetrySnapshot
+                          ? `Collected ${formatRelativeTime(telemetrySnapshot.collectedAt)}`
+                          : 'Awaiting first check-in'}
+                      </span>
+                    </div>
+                    {telemetrySnapshot ? (
+                      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                        {[
+                          { label: 'CPU', value: telemetrySnapshot.cpuPercent },
+                          { label: 'Memory', value: telemetrySnapshot.memoryPercent },
+                          { label: 'Disk', value: telemetrySnapshot.diskPercent }
+                        ].map((metric) => (
+                          <div
+                            key={metric.label}
+                            className="rounded-xl border border-slate-800/60 bg-slate-950/60 p-3"
+                          >
+                            <p className="text-xs uppercase tracking-wide text-slate-500">{metric.label}</p>
+                            <p className={`text-2xl font-semibold ${getTelemetryTone(metric.value)}`}>
+                              {formatPercent(metric.value)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm text-slate-400">
+                        Agent has not reported telemetry yet. Install the agent or confirm it is online to receive the
+                        first snapshot.
+                      </p>
+                    )}
+                    <div className="mt-4">
+                      <button
+                        type="button"
+                        className="text-xs font-semibold text-accent-soft hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                        onClick={() => handleViewTelemetryHistory(server)}
+                      >
+                        View telemetry history
+                      </button>
+                    </div>
+                  </div>
                   <Button
                     variant="primary"
                     className="w-full md:w-auto"
@@ -572,6 +766,88 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
           })
         )}
       </div>
+      {activeTelemetryServer ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/80 p-4 backdrop-blur md:items-center"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeTelemetryPanel();
+            }
+          }}
+        >
+          <div className="w-full max-w-3xl overflow-hidden rounded-3xl border border-slate-800/80 bg-slate-950/95 shadow-[0_60px_120px_-40px_rgba(15,118,110,0.5)]">
+            <div className="flex items-start justify-between border-b border-slate-800/60 p-5">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Telemetry history</p>
+                <h4 className="text-xl font-semibold text-slate-100">{activeTelemetryServer.name}</h4>
+                <p className="text-sm text-slate-500">
+                  {activeTelemetryServer.hostname ?? activeTelemetryServer.allowedIp ?? 'Hostname pending'}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close telemetry history"
+                onClick={closeTelemetryPanel}
+                className="rounded-full border border-slate-800/70 bg-slate-900/70 p-2 text-slate-400 hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              >
+                <span aria-hidden="true">&times;</span>
+              </button>
+            </div>
+            <div className="max-h-[420px] overflow-y-auto p-5 text-sm text-slate-300">
+              {telemetryError ? (
+                <p className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-red-200">
+                  {telemetryError}
+                </p>
+              ) : isTelemetryPanelLoading ? (
+                <p className="text-slate-400">Loading telemetry…</p>
+              ) : activeTelemetryRecords && activeTelemetryRecords.length > 0 ? (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+                      <th scope="col" className="py-2 pr-4 font-semibold">
+                        Collected
+                      </th>
+                      <th scope="col" className="py-2 pr-4 font-semibold">
+                        CPU
+                      </th>
+                      <th scope="col" className="py-2 pr-4 font-semibold">
+                        Memory
+                      </th>
+                      <th scope="col" className="py-2 font-semibold">
+                        Disk
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/70">
+                    {activeTelemetryRecords.map((record) => (
+                      <tr key={record.id}>
+                        <td className="py-3 pr-4 text-slate-200">
+                          <div className="font-medium">{formatTelemetryTimestamp(record.collectedAt)}</div>
+                          <div className="text-xs text-slate-500">{formatRelativeTime(record.collectedAt)}</div>
+                        </td>
+                        <td className={`py-3 pr-4 font-semibold ${getTelemetryTone(record.cpuPercent)}`}>
+                          {formatPercent(record.cpuPercent)}
+                        </td>
+                        <td className={`py-3 pr-4 font-semibold ${getTelemetryTone(record.memoryPercent)}`}>
+                          {formatPercent(record.memoryPercent)}
+                        </td>
+                        <td className={`py-3 font-semibold ${getTelemetryTone(record.diskPercent)}`}>
+                          {formatPercent(record.diskPercent)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="text-slate-400">
+                  No telemetry records are available yet. Once the agent reports health data, the latest{' '}
+                  {TELEMETRY_HISTORY_LIMIT} entries will appear here automatically.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
