@@ -1,5 +1,4 @@
 {
-  "/api/session/route": "app/api/session/route.js",
   "/(dashboard)/servers/page": "app/(dashboard)/servers/page.js",
   "/(dashboard)/page": "app/(dashboard)/page.js",
   "/(dashboard)/projects/page": "app/(dashboard)/projects/page.js",

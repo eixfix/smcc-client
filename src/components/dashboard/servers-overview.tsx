@@ -367,7 +367,7 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
             <li className="list-decimal">
               Encrypt the agent config with your credentials (recommended):
               <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-900/80 p-3 text-xs text-accent-soft">{`sudo loadtest-agent config --server-id <server-id> --access-key <access-key> --secret <secret> --api-url ${API_BASE_URL}`}</pre>
-              This command rewrites the encrypted JSON config at <code>/etc/loadtest-agent/config.yaml</code>. If you prefer to edit manually, provide the same fields (server id, access key, secret, API URL) in that file before restarting the service.
+              This command rewrites the encrypted JSON config at <code>/etc/loadtest-agent/config.yaml</code>. Server IDs are shown on each card for easy copy/paste. If you prefer to edit manually, provide the same fields (server id, access key, secret, API URL) in that file before restarting the service.
             </li>
             <li className="list-decimal">
               Restart the service and confirm it is running:
@@ -456,6 +456,9 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
                 <CardContent className="space-y-4 text-sm text-slate-300">
                   <p className="text-xs text-slate-500">
                     Allowed IP: <span className="font-mono text-slate-200">{server.allowedIp ?? 'Not set'}</span>
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Server ID: <span className="font-mono text-slate-200">{server.id}</span>
                   </p>
                   <Button
                     variant="primary"
