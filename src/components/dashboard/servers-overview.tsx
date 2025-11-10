@@ -165,11 +165,14 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
           throw new Error('Install command response was incomplete.');
         }
 
+        const command = data.command as string;
+        const expiresInMinutes = data.expiresInMinutes as number;
+
         setInstallCommands((prev) => ({
           ...prev,
           [serverId]: {
-            command: data.command,
-            expiresInMinutes: data.expiresInMinutes,
+            command,
+            expiresInMinutes,
             fetchedAt: Date.now()
           }
         }));
