@@ -568,6 +568,12 @@ video {
 .top-\[12\%\] {
   top: 12%;
 }
+.right-3 {
+  right: 0.75rem;
+}
+.top-3 {
+  top: 0.75rem;
+}
 .z-10 {
   z-index: 10;
 }
@@ -604,6 +610,9 @@ video {
 }
 .mt-4 {
   margin-top: 1rem;
+}
+.mt-0 {
+  margin-top: 0px;
 }
 .block {
   display: block;
@@ -1669,6 +1678,11 @@ a:visited:hover {
 .hover\:text-accent-strong:hover {
   --tw-text-opacity: 1;
   color: rgb(14 165 233 / var(--tw-text-opacity, 1));
+}
+
+.hover\:text-white:hover {
+  --tw-text-opacity: 1;
+  color: rgb(255 255 255 / var(--tw-text-opacity, 1));
 }
 
 .focus\:border-accent-soft:focus {

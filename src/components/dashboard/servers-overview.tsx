@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -15,6 +15,7 @@ import type {
   ServerSummary,
   ServerTelemetrySnapshot
 } from '@/src/lib/api';
+import { cn } from '@/src/lib/utils';
 
 interface ServersOverviewProps {
   servers: ServerSummary[];
@@ -113,6 +114,65 @@ function formatTelemetryTimestamp(dateInput: string): string {
   }
 
   return telemetryTimestampFormatter.format(value);
+}
+
+const COMMAND_COPY_RESET_MS = 2000;
+
+function CommandSnippet({
+  command,
+  className,
+  preClassName
+}: {
+  command: string;
+  className?: string;
+  preClassName?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = async () => {
+    try {
+      if (typeof navigator === 'undefined' || !navigator.clipboard) {
+        throw new Error('Clipboard API unavailable');
+      }
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = setTimeout(() => setCopied(false), COMMAND_COPY_RESET_MS);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div className={cn('relative mt-2', className)}>
+      <pre
+        className={cn(
+          'overflow-x-auto rounded-lg bg-slate-900/80 p-3 text-xs text-accent-soft',
+          preClassName
+        )}
+      >
+        {command}
+      </pre>
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="absolute right-3 top-3 rounded-md border border-slate-700/70 bg-slate-900/70 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition hover:text-white"
+      >
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </div>
+  );
 }
 
 type AgentCredentials = {
@@ -516,12 +576,20 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
             </li>
             <li className="list-decimal">
               Encrypt the agent config with your credentials (recommended):
-              <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-900/80 p-3 text-xs text-accent-soft">{`sudo smcc-agent config --server-id <server-id> --access-key <access-key> --secret <secret> --api-url https://smcc-api.trickylabs.id`}</pre>
+              <CommandSnippet command="sudo smcc-agent config --server-id <server-id> --access-key <access-key> --secret <secret> --api-url https://smcc-api.trickylabs.id" />
               This command rewrites the encrypted JSON config at <code>/etc/loadtest-agent/config.yaml</code>. Server IDs are shown on each card for easy copy/paste. If you prefer to edit manually, provide the same fields (server id, access key, secret, API URL) in that file before restarting the service.
             </li>
             <li className="list-decimal">
+              Run the config change helper any time you rotate credentials or API hosts:
+              <CommandSnippet command="sudo smcc-agent config --server-id <server-id> --access-key <access-key> --secret <secret> --api-url https://smcc-api.trickylabs.id" />
+              This re-encrypts the config and validates the payload before the service picks it up.
+            </li>
+            <li className="list-decimal">
               Restart the service and confirm it is running:
-              <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-950/80 p-3 text-xs text-accent-soft">{`sudo systemctl restart loadtest-agent && sudo systemctl status loadtest-agent`}</pre>
+              <CommandSnippet
+                command="sudo systemctl restart smcc-agent && sudo systemctl status smcc-agent"
+                preClassName="bg-slate-950/80"
+              />
             </li>
           </ol>
           <p className="text-xs text-slate-500">
@@ -654,22 +722,24 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
                       </button>
                     </div>
                   </div>
-                  <Button
-                    variant="primary"
-                    className="w-full md:w-auto"
-                    onClick={() => handleCreateAgent(server.id)}
-                    disabled={isServerPending}
-                  >
-                    {isServerPending ? 'Creating agent…' : 'Create Agent Token'}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    className="w-full md:w-auto"
-                    onClick={() => handleGenerateInstallCommand(server.id)}
-                    disabled={isInstallPending}
-                  >
-                    {isInstallPending ? 'Preparing command…' : 'Generate Install Command'}
-                  </Button>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <Button
+                      variant="primary"
+                      className="w-full flex-1"
+                      onClick={() => handleCreateAgent(server.id)}
+                      disabled={isServerPending}
+                    >
+                      {isServerPending ? 'Creating agent…' : 'Create Agent Token'}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="w-full flex-1"
+                      onClick={() => handleGenerateInstallCommand(server.id)}
+                      disabled={isInstallPending}
+                    >
+                      {isInstallPending ? 'Preparing command…' : 'Generate Install Command'}
+                    </Button>
+                  </div>
                   <p className="text-xs text-slate-500">
                     This action revokes previous agent credentials and displays the new secret once.
                   </p>
@@ -709,9 +779,11 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
                       <p className="font-semibold text-slate-200">
                         Install command · valid for approximately {installCommand.expiresInMinutes} minutes
                       </p>
-                      <pre className="overflow-x-auto rounded-lg bg-slate-900/80 p-3 text-accent-soft">
-                        {installCommand.command}
-                      </pre>
+                      <CommandSnippet
+                        command={installCommand.command}
+                        className="mt-0"
+                        preClassName="bg-slate-900/80 text-accent-soft"
+                      />
                       <p className="text-xs text-slate-500">
                         Run this command from the registered server IP. The script refuses requests from other addresses.
                       </p>

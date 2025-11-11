@@ -1,7 +1,9 @@
 {
+  "/api/session/route": "app/api/session/route.js",
+  "/(dashboard)/servers/page": "app/(dashboard)/servers/page.js",
+  "/(dashboard)/page": "app/(dashboard)/page.js",
+  "/(auth)/login/page": "app/(auth)/login/page.js",
   "/(dashboard)/organizations/page": "app/(dashboard)/organizations/page.js",
   "/(dashboard)/scans/agents/page": "app/(dashboard)/scans/agents/page.js",
-  "/(dashboard)/page": "app/(dashboard)/page.js",
-  "/(dashboard)/servers/page": "app/(dashboard)/servers/page.js",
-  "/(auth)/login/page": "app/(auth)/login/page.js"
+  "/(dashboard)/user-guide/page": "app/(dashboard)/user-guide/page.js"
 }
