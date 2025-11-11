@@ -158,7 +158,7 @@ function CommandSnippet({
     <div className={cn('relative mt-2', className)}>
       <pre
         className={cn(
-          'overflow-x-auto rounded-lg bg-slate-900/80 p-3 text-xs text-accent-soft',
+          'overflow-x-auto rounded-lg bg-slate-900/80 p-3 text-xs text-accent-soft break-all whitespace-pre-wrap max-w-full',
           preClassName
         )}
       >
@@ -576,12 +576,12 @@ export function ServersOverview({ servers, organizations }: ServersOverviewProps
             </li>
             <li className="list-decimal">
               Encrypt the agent config with your credentials (recommended):
-              <CommandSnippet command="sudo smcc-agent config --server-id <server-id> --access-key <access-key> --secret <secret> --api-url https://smcc-api.trickylabs.id" />
-              This command rewrites the encrypted JSON config at <code>/etc/loadtest-agent/config.yaml</code>. Server IDs are shown on each card for easy copy/paste. If you prefer to edit manually, provide the same fields (server id, access key, secret, API URL) in that file before restarting the service.
+              <CommandSnippet command="sudo smcc-agent config --server-id <server-id> --access-key <access-key> --secret <secret>" />
+              This command rewrites the encrypted JSON config at <code>/etc/loadtest-agent/config.yaml</code>. Server IDs are shown on each card for easy copy/paste. If you prefer to edit manually, provide the same fields (server id, access key, secret — API URL is optional and defaults to the installer value) in that file before restarting the service.
             </li>
             <li className="list-decimal">
               Run the config change helper any time you rotate credentials or API hosts:
-              <CommandSnippet command="sudo smcc-agent config --server-id <server-id> --access-key <access-key> --secret <secret> --api-url https://smcc-api.trickylabs.id" />
+              <CommandSnippet command="sudo smcc-agent config --server-id <server-id> --access-key <access-key> --secret <secret>" />
               This re-encrypts the config and validates the payload before the service picks it up.
             </li>
             <li className="list-decimal">

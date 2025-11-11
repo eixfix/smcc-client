@@ -738,6 +738,9 @@ video {
 .max-w-3xl {
   max-width: 48rem;
 }
+.max-w-full {
+  max-width: 100%;
+}
 .flex-1 {
   flex: 1 1 0%;
 }
@@ -878,6 +881,12 @@ video {
 }
 .overflow-y-auto {
   overflow-y: auto;
+}
+.whitespace-pre-wrap {
+  white-space: pre-wrap;
+}
+.break-all {
+  word-break: break-all;
 }
 .rounded {
   border-radius: 0.25rem;
