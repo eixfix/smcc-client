@@ -15,10 +15,10 @@ describe('LoginPage', () => {
     render(<LoginPage />);
 
     expect(
-      screen.getByText('Run confident load tests with control tower clarity.')
+      screen.getByText('Observe every server from a unified command center.')
     ).toBeInTheDocument();
-    expect(screen.getByText('Sign in')).toBeInTheDocument();
+    expect(screen.getByText('Enter Monitoring Center')).toBeInTheDocument();
     expect(screen.getByLabelText('Email')).toBeInTheDocument();
-    expect(screen.getByLabelText('Password')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Password/i)).toBeInTheDocument();
   });
 });

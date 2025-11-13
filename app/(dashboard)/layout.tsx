@@ -17,6 +17,7 @@ const NAV_LINKS: NavLink[] = [
   { href: '/tasks', label: 'Tasks', icon: 'tasks', group: 'Load Test' },
   { href: '/reports', label: 'Reports', icon: 'reports', group: 'Load Test' },
   { href: '/servers', label: 'Servers', icon: 'servers', badge: 'BETA', group: 'Monitoring' },
+  { href: '/telemetry', label: 'Telemetry', icon: 'telemetry', badge: 'BETA', group: 'Monitoring' },
   { href: '/scans/manual', label: 'Manual Scans', icon: 'manualScans', badge: 'BETA', group: 'Monitoring' },
   { href: '/scans/agents', label: 'Agent Scans', icon: 'agentScans', badge: 'BETA', group: 'Monitoring' },
   { href: '/security', label: 'Security Check', icon: 'security' },

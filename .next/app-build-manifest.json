@@ -65,6 +65,16 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/(dashboard)/user-guide/page.js"
+    ],
+    "/(dashboard)/scans/manual/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/scans/manual/page.js"
+    ],
+    "/(dashboard)/telemetry/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(dashboard)/telemetry/page.js"
     ]
   }
 }

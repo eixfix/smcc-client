@@ -3,17 +3,182 @@ import { cookies } from 'next/headers';
 import { StatCard } from '@/src/components/dashboard/stat-card';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/src/components/ui/card';
 import { Badge } from '@/src/components/ui/badge';
-import { fetchLatencyAnomalies, fetchOrganizations } from '@/src/lib/api';
+import type { TaskReportActivity } from '@/src/lib/api';
+import { fetchLatencyAnomalies, fetchOrganizations, fetchRecentReports } from '@/src/lib/api';
+
+type SnapshotDelta = {
+  value: string;
+  intent: 'up' | 'down' | 'steady';
+};
+
+type SnapshotMetric = {
+  value: string;
+  delta?: SnapshotDelta;
+};
+
+const PERFORMANCE_SAMPLE_SIZE = 10;
+
+type SnapshotOptions = {
+  unit: 'ms' | '%';
+  fractionDigits: number;
+  invertDelta?: boolean;
+};
+
+export function buildPerformanceSnapshot(
+  reports: TaskReportActivity[]
+): { latency: SnapshotMetric; successRate: SnapshotMetric } {
+  const latencies: number[] = [];
+  const successRates: number[] = [];
+
+  for (const report of reports) {
+    const metrics = report.summaryJson?.metrics;
+    let successRecorded = false;
+    if (metrics && typeof metrics === 'object') {
+      const latency =
+        typeof metrics.p95Ms === 'number'
+          ? metrics.p95Ms
+          : typeof metrics.averageMs === 'number'
+            ? metrics.averageMs
+            : null;
+      if (typeof latency === 'number' && Number.isFinite(latency)) {
+        latencies.push(latency);
+      }
+      if (typeof metrics.successRate === 'number' && Number.isFinite(metrics.successRate)) {
+        successRates.push(metrics.successRate);
+        successRecorded = true;
+      }
+    }
+
+    if (
+      !successRecorded &&
+      successRates.length < PERFORMANCE_SAMPLE_SIZE &&
+      report.summaryJson?.results &&
+      typeof report.summaryJson.results === 'object'
+    ) {
+      const results = report.summaryJson.results;
+      const successCount =
+        typeof results.successCount === 'number' ? results.successCount : undefined;
+      const failureCount =
+        typeof results.failureCount === 'number' ? results.failureCount : undefined;
+      const totalRequests =
+        typeof results.totalRequests === 'number'
+          ? results.totalRequests
+          : typeof successCount === 'number' && typeof failureCount === 'number'
+            ? successCount + failureCount
+            : undefined;
+
+      if (
+        typeof totalRequests === 'number' &&
+        totalRequests > 0 &&
+        typeof successCount === 'number'
+      ) {
+        const derivedRate = (successCount / totalRequests) * 100;
+        successRates.push(derivedRate);
+      }
+    }
+
+    if (
+      latencies.length >= PERFORMANCE_SAMPLE_SIZE &&
+      successRates.length >= PERFORMANCE_SAMPLE_SIZE
+    ) {
+      break;
+    }
+  }
+
+  return {
+    latency: computeSnapshotMetric(latencies, {
+      unit: 'ms',
+      fractionDigits: 0,
+      invertDelta: true
+    }),
+    successRate: computeSnapshotMetric(successRates, {
+      unit: '%',
+      fractionDigits: 1
+    })
+  };
+}
+
+function computeSnapshotMetric(values: number[], options: SnapshotOptions): SnapshotMetric {
+  const sample = values.slice(0, PERFORMANCE_SAMPLE_SIZE);
+  if (sample.length === 0) {
+    return { value: '—' };
+  }
+
+  const avg = average(sample);
+  if (avg === null) {
+    return { value: '—' };
+  }
+
+  const formattedValue = formatMetricValue(avg, options.unit, options.fractionDigits);
+
+  if (sample.length === 1) {
+    return { value: formattedValue };
+  }
+
+  const trailingAvg = average(sample.slice(1));
+  if (trailingAvg === null) {
+    return { value: formattedValue };
+  }
+
+  const deltaRaw = sample[0] - trailingAvg;
+  const intent: SnapshotDelta['intent'] =
+    Math.abs(deltaRaw) < Number.EPSILON
+      ? 'steady'
+      : options.invertDelta
+        ? deltaRaw < 0
+          ? 'up'
+          : 'down'
+        : deltaRaw > 0
+          ? 'up'
+          : 'down';
+
+  const deltaValue = formatMetricValue(deltaRaw, options.unit, options.fractionDigits, true);
+
+  return {
+    value: formattedValue,
+    delta: {
+      value: deltaValue,
+      intent
+    }
+  };
+}
+
+function average(values: number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+  const sum = values.reduce((acc, value) => acc + value, 0);
+  return sum / values.length;
+}
+
+function formatMetricValue(
+  value: number,
+  unit: SnapshotOptions['unit'],
+  fractionDigits: number,
+  includeSign = false
+): string {
+  const sign = includeSign
+    ? value > 0
+      ? '+'
+      : value < 0
+        ? '−'
+        : ''
+    : '';
+  const magnitude = Math.abs(value);
+  return `${sign}${magnitude.toFixed(fractionDigits)} ${unit}`;
+}
 
 export default async function OverviewPage() {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   const token = cookies().get('lt_token')?.value;
-  const [organizations, anomalies] = await Promise.all([
+  const [organizations, anomalies, recentReports] = await Promise.all([
     fetchOrganizations(apiBaseUrl, token),
-    fetchLatencyAnomalies(apiBaseUrl, token)
+    fetchLatencyAnomalies(apiBaseUrl, token),
+    fetchRecentReports(apiBaseUrl, token)
   ]);
 
   const totalProjects = organizations.reduce((acc, org) => acc + org.projectCount, 0);
+  const performanceSnapshot = buildPerformanceSnapshot(recentReports);
 
   return (
     <div className="space-y-10">
@@ -51,14 +216,14 @@ export default async function OverviewPage() {
           <StatCard
             title="Avg. Response"
             description="95th percentile across last 10 runs"
-            value="432 ms"
-            delta={{ value: '−41 ms', intent: 'down' }}
+            value={performanceSnapshot.latency.value}
+            delta={performanceSnapshot.latency.delta}
           />
           <StatCard
             title="Success Rate"
             description="Requests served without degradation"
-            value="99.4%"
-            delta={{ value: '+0.6%', intent: 'up' }}
+            value={performanceSnapshot.successRate.value}
+            delta={performanceSnapshot.successRate.delta}
           />
         </div>
       </section>

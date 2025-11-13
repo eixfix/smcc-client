@@ -23,6 +23,7 @@ import {
   BoltIcon,
   CpuChipIcon,
   ChevronDownIcon,
+  ChartBarIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import type { SVGProps } from 'react';
@@ -48,6 +49,7 @@ type IconKey =
   | 'security'
   | 'manualScans'
   | 'agentScans'
+  | 'telemetry'
   | 'guide'
   | 'settings';
 
@@ -60,6 +62,7 @@ const iconMap: Record<IconKey, (props: SVGProps<SVGSVGElement>) => JSX.Element> 
   servers: (props) => <ServerStackIcon {...props} />,
   manualScans: (props) => <BoltIcon {...props} />,
   agentScans: (props) => <CpuChipIcon {...props} />,
+  telemetry: (props) => <ChartBarIcon {...props} />,
   tasks: (props) => <ClipboardDocumentListIcon {...props} />,
   reports: (props) => <DocumentChartBarIcon {...props} />,
   security: (props) => <ShieldCheckIcon {...props} />,

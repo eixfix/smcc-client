@@ -90,6 +90,7 @@ export type ServerTelemetrySnapshot = {
   cpuPercent: number | null;
   memoryPercent: number | null;
   diskPercent: number | null;
+  raw: Record<string, unknown> | null;
 };
 
 export type TaskReportActivity = {
@@ -327,6 +328,7 @@ export async function fetchServers(
         cpuPercent: number | null;
         memoryPercent: number | null;
         diskPercent: number | null;
+        rawJson?: Record<string, unknown> | null;
       }>;
     }>;
 
@@ -353,7 +355,8 @@ export async function fetchServers(
             collectedAt: server.telemetry[0].collectedAt,
             cpuPercent: server.telemetry[0].cpuPercent ?? null,
             memoryPercent: server.telemetry[0].memoryPercent ?? null,
-            diskPercent: server.telemetry[0].diskPercent ?? null
+            diskPercent: server.telemetry[0].diskPercent ?? null,
+            raw: (server.telemetry[0].rawJson as Record<string, unknown> | null) ?? null
           }
         : null
     }));
@@ -421,14 +424,15 @@ export async function fetchManualScanHistory(
 
 export async function fetchAgentScanHistory(
   apiBaseUrl?: string,
-  token?: string
+  token?: string,
+  limit = 50
 ): Promise<AgentScanSummary[]> {
   if (!apiBaseUrl || !token) {
     return [];
   }
 
   try {
-    const response = await fetch(`${apiBaseUrl}/servers/scans`, {
+    const response = await fetch(`${apiBaseUrl}/servers/scans?limit=${limit}`, {
       cache: 'no-store',
       headers: {
         Authorization: `Bearer ${token}`
