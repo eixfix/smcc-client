@@ -1,184 +1,93 @@
-name: Build & Deploy • zycas-dashboard (staging)
+name: Deploy Client (staging)
 
 on:
   push:
-    branches: ["main"]
+    branches: [ "main" ]
   workflow_dispatch:
 
 concurrency:
-  group: zycas-dashboard-staging
+  group: deploy-client-staging
   cancel-in-progress: true
 
 jobs:
-  build_and_deploy:
-    runs-on: ubuntu-24.04
-    environment: { name: staging }
+  build-client:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    # Put public build-time vars here or in Environment Variables
+    env:
+      NEXT_PUBLIC_API_BASE_URL: https://smcc-api.trickylabs.id
+      NODE_OPTIONS: --max_old_space_size=2048
+      NEXT_PUBLIC_BASE_URL: https://smcc.trickylabs.id
+      NEXTAUTH_URL: https://smcc.trickylabs.id
+      AUTH_URL: https://smcc.trickylabs.id
+      NEXT_PUBLIC_AGENT_INSTALL_URL: "https://smcc-api.trickylabs.id/agents/install.sh"
+      AUTH_TRUST_HOST: true
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
 
-      - name: Setup Node 22.18.0
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22.18.0'
-          check-latest: true
-
-      - name: Pin npm 10.9.3
-        run: |
-          npm i -g npm@10.9.3
-          node -v && npm -v
-
-      - name: Enable Corepack & pnpm
-        env: { COREPACK_ENABLE_DOWNLOAD_PROMPT: 0 }
-        run: |
-          corepack enable
-          pnpm -v
-
-      - name: Cache pnpm store
-        id: pnpm-cache
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
-
-      - name: Restore pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-pnpm-store-
+          node-version: '20'
+          cache: 'npm'
 
       - name: Install deps
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
-      - name: Build (standalone)
-        env:
-          APP_ENV: staging
-          NODE_OPTIONS: --max-old-space-size=4096
-          SWC_THREADS: 1
-          NEXT_PUBLIC_API_URL: https://staging-api.zycaspos.app
-          NEXTAUTH_URL: https://staging-dashboard.zycaspos.app
-          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
-          NEXT_IMAGE_HOSTNAME: "api.dicebear.com,staging-api.zycaspos.app,api-zycas.eling.my.id"
-          NEXT_PUBLIC_API_MOCKING: disabled
-          NEXT_PUBLIC_APP_NAME: "Zycas Dashboard"
-          NEXT_PUBLIC_DISABLE_AUTH: true
-          NEXT_PUBLIC_ENV: development
-          NEXT_PUBLIC_FIREBASE_API_KEY: AIzaSyAh7k_2g7tyny-gPRgKyTl3AYGcAj7iJOM
-          NEXT_PUBLIC_FIREBASE_APP_ID: 1:1042261216947:web:0f26ebed22c49f0c83aac6
-          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: zycas-v2.firebaseapp.com
-          NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: G-QCNFBE89XF
-          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: 1042261216947
-          NEXT_PUBLIC_FIREBASE_PROJECT_ID: zycas-v2
-          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: zycas-v2.firebasestorage.app
-          SKIP_TYPE_CHECK: true
-          FORCE_API_REWRITE: false
-          SIMPLE_REWRITES: false
-          NEXT_TELEMETRY_DISABLED: 1
-        run: pnpm build
+      - name: Build Next.js
+        run: npm run build
 
-      - name: Pack tarball
-        shell: bash
+      - name: Prune dev deps (prod only)
+        run: npm prune --omit=dev
+
+      - name: Package artifact
         run: |
-          set -euxo pipefail
-          mkdir -p deploy/.next
+          mkdir -p release
+          cp -r .next public package.json package-lock.json node_modules next.config.* release/ 2>/dev/null || true
+          tar -C release -czf /tmp/client-${{ github.sha }}.tgz .
 
-          # Include standalone output (if present)
-          if [ -d .next/standalone ]; then
-            mkdir -p deploy/.next/standalone
-            rsync -a .next/standalone/ deploy/.next/standalone/
-          fi
-
-          # Include full .next (BUILD_ID, static, manifests)
-          rsync -a .next/ deploy/.next/
-
-          # Public assets
-          [ -d public ] && rsync -a public/ deploy/public/ || true
-
-          # Make runtime symlinks inside artifact (harmless if already valid)
-          mkdir -p deploy/.next/standalone/.next
-          ln -sfn ../static    deploy/.next/standalone/.next/static  || true
-          ln -sfn ../../public deploy/.next/standalone/public        || true
-
-          [ -f deploy/.next/BUILD_ID ] && echo "BUILD_ID=$(cat deploy/.next/BUILD_ID)" || echo "No BUILD_ID found!"
-          tar -C deploy -czf artifact.tgz .
-          sha256sum artifact.tgz > artifact.tgz.sha256
-          du -h artifact.tgz
-
-      - name: Add SSH key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      - name: Trust host
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -p ${SSH_PORT:-22} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Upload + remote deploy
-        env:
-          RMT: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
-          RUNID: ${{ github.run_id }}
-        run: |
-          set -euxo pipefail
-          TARBALL="/tmp/zycas-dashboard-stg-${RUNID}.tgz"
-          SUMFILE="/tmp/zycas-dashboard-stg-${RUNID}.tgz.sha256"
-
-          scp -P ${SSH_PORT:-22} artifact.tgz "$RMT:$TARBALL"
-          scp -P ${SSH_PORT:-22} artifact.tgz.sha256 "$RMT:$SUMFILE"
-
-          # Verify checksum on remote, run deploy script, cleanup old tmp files
-          ssh -p ${SSH_PORT:-22} "$RMT" "\
-            cd /tmp && sha256sum -c $(basename $SUMFILE) && \
-            sudo /usr/local/bin/deploy-zycas-dashboard-stg.sh $TARBALL && \
-            rm -f $TARBALL $SUMFILE && \
-            sudo find /tmp -maxdepth 1 -name 'zycas-dashboard-stg-*.tgz*' -mtime +2 -delete \
-          "
-
-      - name: Notify Discord (success)
-        if: ${{ success() }}
-        uses: Ilshidur/action-discord@master
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        with:
-          args: |
-            ✅ **Deploy Succeeded** • zycas-dashboard (staging)
-            - Branch: ${{ github.ref_name }}
-            - Commit: ${{ github.sha }}
-            - Actor: ${{ github.actor }}
-            - Host: ${{ secrets.SSH_HOST }}
-            - Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-      - name: Notify Discord (failure)
-        if: ${{ failure() }}
-        uses: Ilshidur/action-discord@master
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        with:
-          args: |
-            ❌ **Deploy Failed** • zycas-dashboard (staging)
-            - Branch: ${{ github.ref_name }}
-            - Commit: ${{ github.sha }}
-            - Actor: ${{ github.actor }}
-            - Host: ${{ secrets.SSH_HOST }}
-            - Job: build_and_deploy
-            - Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-  # Optional, best-effort artifact upload (isolated so post-step can't fail your deploy)
-  upload_artifact_optional:
-    needs: build_and_deploy
-    runs-on: ubuntu-24.04
-    continue-on-error: true
-    steps:
-      - name: Checkout (metadata only)
-        uses: actions/checkout@v4
-        with: { fetch-depth: 1 }
-
-      - name: Create minimal marker (so you have something to download)
-        run: |
-          echo "Run ${{ github.run_id }} deployed at $(date -u +%FT%TZ)" > DEPLOYED.txt
-
-      - name: Upload marker artifact (optional)
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: zycas-dashboard-stg-${{ github.run_id }}
-          path: DEPLOYED.txt
-          retention-days: 3
+          name: client-${{ github.sha }}
+          path: /tmp/client-${{ github.sha }}.tgz
+          retention-days: 1
+
+  deploy-client:
+    runs-on: ubuntu-latest
+    needs: build-client
+    environment: staging
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: client-${{ github.sha }}
+          path: /tmp
+
+      - name: Prepare SSH
+        run: |
+          install -m 600 -D /dev/null ~/.ssh/id_ed25519
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          if [ -n "${{ secrets.SSH_KNOWN_HOSTS }}" ]; then
+            echo "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -t ed25519 ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+          fi
+
+      - name: Upload & finalize on server
+        run: |
+          scp /tmp/client-${{ github.sha }}.tgz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "/opt/smcc/finalize_release.sh client ${{ github.sha }} /tmp/client-${{ github.sha }}.tgz .env"
+
+      - name: Smoke test (local port)
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "curl -sSI http://127.0.0.1:3071/ | head -n1 || true"
